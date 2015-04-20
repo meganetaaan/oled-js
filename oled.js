@@ -1,4 +1,6 @@
-var Oled = function(board, five, opts) {
+var m = require('mraa');
+
+var Oled = function(opts) {
 
   this.HEIGHT = opts.height || 32;
   this.WIDTH = opts.width || 128;
@@ -46,10 +48,6 @@ var Oled = function(board, five, opts) {
 
   this.dirtyBytes = [];
 
-  // this is necessary as we're not natively sitting within johnny-five lib
-  this.board = board;
-  this.five = five;
-
   var config = {
     '128x32': {
       'multiplex': 0x1F,
@@ -70,7 +68,7 @@ var Oled = function(board, five, opts) {
     '64x48': {
       'multiplex': 0x2F,
       'compins': 0x12,
-      'coloffset': (this.MICROVIEW) ? 32 : 0
+      'coloffset': 0
     }
   };
 
@@ -140,7 +138,7 @@ Oled.prototype._initialise = function() {
 
 Oled.prototype._setUpSPI = function() {
 
-    // set up spi pins
+    /*// set up spi pins
     this.dcPin = new this.five.Pin(this.SPIconfig.dcPin);
     this.ssPin = new this.five.Pin(this.SPIconfig.ssPin);
     this.clkPin = new this.five.Pin(this.SPIconfig.clkPin);
@@ -152,7 +150,21 @@ Oled.prototype._setUpSPI = function() {
     this.rstPin.low();
     this.rstPin.high();
     // Set SS to high so a connected chip will be "deselected" by default
-    this.ssPin.high();
+    this.ssPin.high();*/
+    this.SPIInterface = new m.Spi(5);
+
+    this.dcPin = new m.Gpio(36);
+    this.dcPin.dir(m.DIR_OUT);
+    this.dcPin.write(1);
+
+    //this.ssPin = new m.Gpio(9);
+    //this.ssPin.dir(m.DIR_OUT);
+    //this.ssPin.write(1);
+
+    this.rstPin = new m.Gpio(48);
+    this.rstPin.dir(m.DIR_OUT);
+    this.rstPin.write(0);
+    this.rstPin.write(1);
 }
 
 // writes both commands and data buffers to this device
@@ -168,7 +180,7 @@ Oled.prototype._transfer = function(type, val) {
 
   if (this.PROTOCOL === 'I2C') {
     // send control and actual val
-    this.board.io.i2cWrite(this.ADDRESS, [control, val]);
+    //this.board.io.i2cWrite(this.ADDRESS, [control, val]);
   } else {
     // send val via SPI, no control byte
     this._writeSPI(val, type);
@@ -180,15 +192,18 @@ Oled.prototype._writeSPI = function(byte, mode) {
 
   // set dc to low if command byte, high if data byte
   if (mode === 'cmd') {
-    this.dcPin.low();
+    this.dcPin.write(0);
   } else {
-    this.dcPin.high();
+    this.dcPin.write(1);
   }
-
+  var buf = new Buffer(1);
+  buf[0] = byte;
+  this.SPIInterface.write(buf);
+  
   // select the device as slave
-  this.ssPin.low();
+  //this.ssPin.low();
 
-  for (bit = 7; bit >= 0; bit--) {
+  /*for (bit = 7; bit >= 0; bit--) {
 
     // pull clock low
     this.clkPin.low();
@@ -206,8 +221,8 @@ Oled.prototype._writeSPI = function(byte, mode) {
   }
 
   // turn off slave select so other devices can use SPI
-  // don't be an SPI hogging jerk basically
-  this.ssPin.high();
+  // don't be an SPI hogging jerk basically*/
+  //this.ssPin.high();
 }
 
 // read a byte from the oled
@@ -359,12 +374,26 @@ Oled.prototype._findCharBuf = function(font, c) {
   return cBuf;
 }
 
+Oled.prototype.setPageAddress = function(add) {
+  this._waitUntilReady(function() {
+    add = 0xb0 | add;
+    this._transfer('cmd', add);
+  }.bind(this));
+}
+
+Oled.prototype.setColumnAddress = function(add) {
+  this._waitUntilReady(function() {
+    this._transfer('cmd', (0x10|(add>>4))+0x02);
+    this._transfer('cmd', (0x0f&add));
+  }.bind(this));
+}
+
 // send the entire framebuffer to the oled
 Oled.prototype.update = function() {
   // wait for oled to be ready
   this._waitUntilReady(function() {
     // set the start and endbyte locations for oled display update
-    var displaySeq = [
+    /*var displaySeq = [
       this.COLUMN_ADDR,
       this.screenConfig.coloffset,
       this.screenConfig.coloffset + this.WIDTH - 1, // column start and end address
@@ -383,6 +412,14 @@ Oled.prototype.update = function() {
     // write buffer data
     for (v = 0; v < bufferLen; v += 1) {
       this._transfer('data', this.buffer[v]);
+    }*/
+    var i, j;
+    for (i = 0; i < 6; i++) {
+      this.setPageAddress(i);
+      this.setColumnAddress(0);
+      for (j = 0; j < 0x40; j++) {
+        this._transfer('data', this.buffer[i*0x40+j]);
+      }
     }
 
   }.bind(this));
@@ -501,7 +538,10 @@ Oled.prototype.drawPixel = function(pixels, sync) {
 
 // looks at dirty bytes, and sends the updated bytes to the display
 Oled.prototype._updateDirtyBytes = function(byteArray) {
-  var blen = byteArray.length, i,
+  this.update();
+  // now that all bytes are synced, reset dirty state
+  this.dirtyBytes = [];
+  /*var blen = byteArray.length, i,
       displaySeq = [];
 
   // check to see if this will even save time
@@ -539,7 +579,7 @@ Oled.prototype._updateDirtyBytes = function(byteArray) {
     }.bind(this));
   }
   // now that all bytes are synced, reset dirty state
-  this.dirtyBytes = [];
+  this.dirtyBytes = [];*/
 }
 
 // using Bresenham's line algorithm
