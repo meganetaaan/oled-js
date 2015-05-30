@@ -392,27 +392,6 @@ Oled.prototype.setColumnAddress = function(add) {
 Oled.prototype.update = function() {
   // wait for oled to be ready
   this._waitUntilReady(function() {
-    // set the start and endbyte locations for oled display update
-    /*var displaySeq = [
-      this.COLUMN_ADDR,
-      this.screenConfig.coloffset,
-      this.screenConfig.coloffset + this.WIDTH - 1, // column start and end address
-      this.PAGE_ADDR, 0, (this.HEIGHT / 8) - 1 // page start and end address
-    ];
-
-    var displaySeqLen = displaySeq.length,
-        bufferLen = this.buffer.length,
-        i, v;
-
-    // send intro seq
-    for (i = 0; i < displaySeqLen; i += 1) {
-      this._transfer('cmd', displaySeq[i]);
-    }
-
-    // write buffer data
-    for (v = 0; v < bufferLen; v += 1) {
-      this._transfer('data', this.buffer[v]);
-    }*/
     var i, j;
     for (i = 0; i < 6; i++) {
       this.setPageAddress(i);
@@ -422,6 +401,34 @@ Oled.prototype.update = function() {
       }
     }
 
+  }.bind(this));
+}
+
+// send the entire framebuffer to the oled
+Oled.prototype.update = function() {
+  // wait for oled to be ready
+  this._waitUntilReady(function() {
+    var i, j;
+    for (i = 0; i < 6; i++) {
+      this.setPageAddress(i);
+      this.setColumnAddress(0);
+      for (j = 0; j < 0x40; j++) {
+        this._transfer('data', this.buffer[i*0x40+j]);
+      }
+    }
+
+  }.bind(this));
+}
+
+Oled.prototype.updatePage = function(pageAddr, buf) {
+  // wait for oled to be ready
+  this._waitUntilReady(function() {
+    this.setPageAddress(pageAddr);
+    this.setColumnAddress(0);
+    var j;
+    for (j = 0; j < 0x40; j++) {
+      this._transfer('data', buf[j]);
+    }
   }.bind(this));
 }
 
